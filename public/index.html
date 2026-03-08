@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Disk Cleaner</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:      #00ff41;
+      --green-dim:  #00cc33;
+      --green-dark: #003311;
+      --green-glow: rgba(0, 255, 65, 0.18);
+      --bg:         #060a06;
+      --bg2:        #0a100a;
+      --bg3:        #0d160d;
+      --border:     rgba(0, 255, 65, 0.18);
+      --border-mid: rgba(0, 255, 65, 0.35);
+      --text:       #d4ffd8;
+      --text-dim:   #6abf72;
+      --red:        #ff3030;
+      --yellow:     #ffe000;
+    }
+
+    body {
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 48px 28px 32px;
+      -webkit-user-select: none;
+      user-select: none;
+      /* grid background */
+      background-image:
+        linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.08) 2px,
+        rgba(0,0,0,0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      font-family: 'Orbitron', monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--green);
+      text-shadow: 0 0 12px var(--green), 0 0 24px rgba(0,255,65,0.4);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 span { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.4); }
+
+    /* ── Disk bar ── */
+    .disk-bar-wrap {
+      background: var(--bg2);
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 0 12px var(--green-glow), inset 0 0 20px rgba(0,255,65,0.03);
+    }
+
+    .disk-bar-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      letter-spacing: 0.06em;
+    }
+
+    .disk-bar-row strong { color: var(--green); }
+
+    .disk-bar-track {
+      height: 6px;
+      background: var(--green-dark);
+      border-radius: 2px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .disk-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00ff41, #00cc33);
+      box-shadow: 0 0 8px var(--green);
+      transition: width 0.6s ease;
+    }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 6px 14px;
+      border-radius: 3px;
+      border: 1px solid var(--border-mid);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+
+    button:active { transform: scale(0.96); }
+    button:disabled { opacity: 0.25; cursor: not-allowed; }
+
+    .btn-primary {
+      background: rgba(0,255,65,0.1);
+      color: var(--green);
+      border-color: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: rgba(0,255,65,0.2);
+      box-shadow: 0 0 14px rgba(0,255,65,0.35);
+    }
+
+    .btn-danger {
+      background: rgba(255,48,48,0.1);
+      color: var(--red);
+      border-color: var(--red);
+      box-shadow: 0 0 8px rgba(255,48,48,0.15);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(255,48,48,0.2);
+      box-shadow: 0 0 14px rgba(255,48,48,0.3);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-dim);
+      border-color: rgba(0,255,65,0.12);
+    }
+    .btn-ghost:hover:not(:disabled) {
+      color: var(--green);
+      border-color: var(--border-mid);
+    }
+
+    .sel-info {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+    .sel-info strong { color: var(--green); }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 14px;
+      font-size: 10.5px;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot  { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .dot-safe    { background: var(--green);  box-shadow: 0 0 5px var(--green); }
+    .dot-caution { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); }
+    .dot-danger  { background: var(--red);    box-shadow: 0 0 5px var(--red); }
+
+    /* ── Categories ── */
+    .categories { display: flex; flex-direction: column; gap: 16px; }
+
+    .cat-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      padding-left: 2px;
+    }
+
+    .items { display: flex; flex-direction: column; gap: 3px; }
+
+    /* ── Item row ── */
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 9px 12px;
+      transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+    }
+
+    .item.clickable { cursor: pointer; }
+    .item.clickable:hover {
+      border-color: var(--border-mid);
+      background: var(--bg3);
+      box-shadow: 0 0 10px var(--green-glow);
+    }
+
+    .item.selected {
+      border-color: var(--green);
+      background: rgba(0,255,65,0.05);
+      box-shadow: 0 0 12px var(--green-glow);
+    }
+
+    .item.missing { opacity: 0.2; }
+
+    /* Checkbox */
+    .cb {
+      width: 15px; height: 15px;
+      border-radius: 2px;
+      border: 1px solid var(--text-dim);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.12s;
+    }
+    .item.selected .cb {
+      border-color: var(--green);
+      background: rgba(0,255,65,0.15);
+      box-shadow: 0 0 6px rgba(0,255,65,0.4);
+    }
+    .cb svg { display: none; }
+    .item.selected .cb svg { display: block; }
+
+    /* Lock */
+    .lock-icon { flex-shrink: 0; color: var(--red); opacity: 0.5; }
+
+    /* Risk dot */
+    .risk-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .risk-dot.safe    { background: var(--green);  box-shadow: 0 0 4px var(--green); }
+    .risk-dot.caution { background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
+    .risk-dot.danger  { background: var(--red);    box-shadow: 0 0 4px var(--red); }
+
+    .item-info { flex: 1; min-width: 0; }
+
+    .item-name {
+      font-size: 12.5px;
+      color: var(--text);
+      letter-spacing: 0.03em;
+    }
+    .item-name.muted { color: var(--text-dim); }
+
+    .item-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .item-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+    .badge {
+      font-size: 9.5px;
+      font-weight: 400;
+      padding: 2px 6px;
+      border-radius: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-family: 'Orbitron', monospace;
+    }
+    .badge-danger  { background: rgba(255,48,48,0.1);  color: var(--red);    border: 1px solid rgba(255,48,48,0.3); }
+    .badge-caution { background: rgba(255,224,0,0.08); color: var(--yellow); border: 1px solid rgba(255,224,0,0.25); }
+
+    .item-size {
+      font-size: 12px;
+      color: var(--text-dim);
+      min-width: 60px;
+      text-align: right;
+      letter-spacing: 0.03em;
+    }
+    .item-size.big { color: var(--red); text-shadow: 0 0 6px rgba(255,48,48,0.4); }
+    .item.selected .item-size { color: var(--green); }
+
+    /* ── Status messages ── */
+    .center-msg {
+      text-align: center;
+      padding: 48px;
+      color: var(--text-dim);
+      font-size: 13px;
+      letter-spacing: 0.05em;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid var(--green-dark);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+      box-shadow: 0 0 6px var(--green);
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status { margin-top: 16px; padding: 10px 14px; border-radius: 3px; font-size: 12px; letter-spacing: 0.04em; display: none; }
+    .status.success { background: rgba(0,255,65,0.07);  border: 1px solid rgba(0,255,65,0.3);  color: var(--green); box-shadow: 0 0 10px var(--green-glow); display: block; }
+    .status.error   { background: rgba(255,48,48,0.07); border: 1px solid rgba(255,48,48,0.3); color: var(--red);   display: block; }
+    .status.info    { background: rgba(0,255,65,0.04);  border: 1px solid var(--border);       color: var(--text-dim); display: block; }
+
+    /* ── Terminal ── */
+    .terminal {
+      background: #020602;
+      border: 1px solid var(--border-mid);
+      border-radius: 4px;
+      padding: 14px 16px;
+      height: 420px;
+      overflow-y: auto;
+      font-size: 11.5px;
+      line-height: 1.7;
+      box-shadow: 0 0 20px var(--green-glow), inset 0 0 30px rgba(0,0,0,0.5);
+      scroll-behavior: smooth;
+    }
+
+    .term-header {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .term-dot { width: 11px; height: 11px; border-radius: 50%; }
+    .term-dot-r { background: #ff5f57; }
+    .term-dot-y { background: #ffbd2e; }
+    .term-dot-g { background: #28ca41; }
+    .term-title {
+      margin-left: auto;
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+    }
+
+    .term-line { display: block; }
+    .term-cmd    { color: var(--green); }
+    .term-cmd::before { content: '$ '; color: var(--text-dim); }
+    .term-out    { color: #7acc80; padding-left: 14px; }
+    .term-miss   { color: #3a5c3d; padding-left: 14px; font-style: italic; }
+    .term-err    { color: var(--red); padding-left: 14px; }
+    .term-label  { color: #3d6b40; }
+    .term-cursor {
+      display: inline-block;
+      width: 7px; height: 13px;
+      background: var(--green);
+      vertical-align: middle;
+      animation: blink 0.8s step-end infinite;
+      box-shadow: 0 0 6px var(--green);
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .term-progress {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 10.5px;
+      color: var(--text-dim);
+    }
+    .term-progress-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--green-dark);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .term-progress-fill {
+      height: 100%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      transition: width 0.3s ease;
+    }
+
+    /* ── Update banner ── */
+    .update-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 224, 0, 0.06);
+      border: 1px solid rgba(255, 224, 0, 0.3);
+      border-radius: 4px;
+      padding: 9px 14px;
+      margin-bottom: 14px;
+      font-size: 11.5px;
+      color: var(--yellow);
+      box-shadow: 0 0 10px rgba(255,224,0,0.1);
+    }
+    .update-banner.visible { display: flex; }
+    .update-banner a {
+      color: var(--yellow);
+      text-decoration: underline;
+      cursor: pointer;
+      margin-left: auto;
+      white-space: nowrap;
+      letter-spacing: 0.05em;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--green-dark); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--green-dim); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>DISK <span>//</span> CLEANER</h1>
+</header>
+
+<div class="update-banner" id="updateBanner">
+  <span>&#9651;</span>
+  <span id="updateMsg">UPDATE AVAILABLE</span>
+  <a id="updateLink" href="#" onclick="openRelease(event)">[ DOWNLOAD ]</a>
+</div>
+
+<div class="disk-bar-wrap" id="diskWrap" style="display:none">
+  <div class="disk-bar-row">
+    <span>&gt; USED: <strong id="diskUsed">–</strong> / <strong id="diskTotal">–</strong></span>
+    <span>FREE: <strong id="diskAvail">–</strong></span>
+  </div>
+  <div class="disk-bar-track">
+    <div class="disk-bar-fill" id="diskFill" style="width:0%"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn-primary" id="btnScan" onclick="runScan()">[ SCAN ]</button>
+  <button class="btn-ghost" id="btnSelectSafe" onclick="selectSafe()" disabled>[ SELECT SAFE ]</button>
+  <button class="btn-ghost" id="btnSelectAll" onclick="selectAll()" disabled>[ SELECT ALL ]</button>
+  <button class="btn-ghost" id="btnClear" onclick="clearSel()" disabled>[ CLEAR ]</button>
+  <span class="sel-info" id="selInfo"></span>
+  <button class="btn-danger" id="btnDelete" onclick="deleteSelected()" disabled>[ DELETE ]</button>
+</div>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot dot-safe"></span> Safe</span>
+  <span class="legend-item"><span class="legend-dot dot-caution"></span> Caution</span>
+  <span class="legend-item"><span class="legend-dot dot-danger"></span> Protected</span>
+</div>
+
+<div id="results"><div class="center-msg">&gt; AWAITING SCAN COMMAND_</div></div>
+<div class="status" id="status"></div>
+
+<script>
+  let items = [];
+  let selected = new Set();
+
+  function fmt(b) {
+    if (!b) return '0 B';
+    const u = ['B','KB','MB','GB'];
+    const i = Math.floor(Math.log(b)/Math.log(1024));
+    return (b/Math.pow(1024,i)).toFixed(1)+' '+u[i];
+  }
+
+  async function loadDisk() {
+    const d = await fetch('/api/disk').then(r=>r.json()).catch(()=>null);
+    if (!d) return;
+    const pct = (d.used/d.total*100).toFixed(1);
+    document.getElementById('diskUsed').textContent = fmt(d.used);
+    document.getElementById('diskTotal').textContent = fmt(d.total);
+    document.getElementById('diskAvail').textContent = fmt(d.avail);
+    document.getElementById('diskFill').style.width = pct+'%';
+    document.getElementById('diskWrap').style.display = 'block';
+  }
+
+  function buildTerminal() {
+    return `
+      <div class="terminal" id="terminal">
+        <div class="term-header">
+          <div class="term-dot term-dot-r"></div>
+          <div class="term-dot term-dot-y"></div>
+          <div class="term-dot term-dot-g"></div>
+          <div class="term-title">DISK CLEANER — SCAN</div>
+        </div>
+        <div id="termLines"></div>
+        <div class="term-progress">
+          <span id="termCount">0 / 0</span>
+          <div class="term-progress-bar"><div class="term-progress-fill" id="termBar" style="width:0%"></div></div>
+        </div>
+      </div>`;
+  }
+
+  function termAppend(html) {
+    const el = document.getElementById('termLines');
+    if (!el) return;
+    el.insertAdjacentHTML('beforeend', html);
+    const term = document.getElementById('terminal');
+    if (term) term.scrollTop = term.scrollHeight;
+  }
+
+  function removeCursor() {
+    const c = document.getElementById('termCursor');
+    if (c) c.remove();
+  }
+
+  async function runScan() {
+    selected.clear();
+    document.getElementById('btnScan').disabled = true;
+    setControls(false);
+    document.getElementById('status').className = 'status';
+    document.getElementById('results').innerHTML = buildTerminal();
+    await loadDisk();
+
+    termAppend(`<span class="term-line term-cmd">diskutil info /</span>`);
+    termAppend(`<span class="term-line term-out">scanning APFS container...</span>`);
+    termAppend(`<span class="term-line"> </span>`);
+
+    await new Promise((resolve) => {
+      const es = new EventSource('/api/scan-stream');
+      let total = 0, done = 0;
+
+      es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'start') {
+          total = msg.total;
+          termAppend(`<span class="term-line term-out">found ${total} targets — starting analysis...</span>`);
+          termAppend(`<span class="term-line"> </span>`);
+        }
+
+        if (msg.type === 'cmd') {
+          removeCursor();
+          termAppend(`<span class="term-line term-label">// ${msg.label}</span>`);
+          termAppend(`<span class="term-line term-cmd">${msg.cmd} <span id="termCursor" class="term-cursor"></span></span>`);
+        }
+
+        if (msg.type === 'output') {
+          removeCursor();
+          if (!msg.exists) {
+            termAppend(`<span class="term-line term-miss">not found — skipped</span>`);
+          } else if (msg.error) {
+            termAppend(`<span class="term-line term-err">${msg.output}</span>`);
+          } else {
+            termAppend(`<span class="term-line term-out">${msg.output}${msg.sizeFormatted ? ` <strong>(${msg.sizeFormatted})</strong>` : ''}</span>`);
+          }
+          termAppend(`<span class="term-line"> </span>`);
+          done++;
+          document.getElementById('termCount').textContent = `${done} / ${total}`;
+          document.getElementById('termBar').style.width = `${(done/total*100).toFixed(1)}%`;
+        }
+
+        if (msg.type === 'done') {
+          removeCursor();
+          termAppend(`<span class="term-line term-out">scan complete. ${msg.results.length} targets analysed.</span>`);
+          termAppend(`<span class="term-line term-cmd">exit 0</span>`);
+          items = msg.results;
+          es.close();
+
+          setTimeout(() => {
+            renderItems();
+            document.getElementById('btnScan').disabled = false;
+            setControls(true);
+            resolve();
+          }, 800);
+        }
+      };
+
+      es.onerror = () => { es.close(); resolve(); };
+    });
+  }
+
+  function renderItems() {
+    const cats = {};
+    for (const it of items) {
+      if (!it.exists && it.size === 0) continue;
+      if (!cats[it.category]) cats[it.category] = [];
+      cats[it.category].push(it);
+    }
+    const catOrder = ['Developer','App Caches','System','User Data','App Data'];
+    const sortedCats = [...new Set([...catOrder, ...Object.keys(cats)])].filter(c => cats[c]);
+    let html = '<div class="categories">';
+    for (const cat of sortedCats) {
+      if (!cats[cat]) continue;
+      const sorted = [...cats[cat]].sort((a,b) => b.size - a.size);
+      html += `<div><div class="cat-label">// ${cat}</div><div class="items">`;
+      for (const it of sorted) html += renderItem(it);
+      html += '</div></div>';
+    }
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+    updateSelInfo();
+  }
+
+  function renderItem(it) {
+    const isDanger  = it.risk === 'danger';
+    const isCaution = it.risk === 'caution';
+    const isSel     = selected.has(it.id);
+    const isBig     = it.size > 500 * 1024 * 1024;
+    const clickable = it.deletable && it.exists;
+
+    const leftIcon = isDanger
+      ? `<svg class="lock-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
+      : `<div class="cb">${isSel ? `<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5l2.5 2.5 5-5" stroke="#00ff41" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>` : ''}</div>`;
+
+    const badge = isDanger
+      ? `<span class="badge badge-danger">PROTECTED</span>`
+      : isCaution ? `<span class="badge badge-caution">CAUTION</span>` : '';
+
+    const missing = !it.exists ? ' missing' : '';
+    const cls = `item${clickable ? ' clickable' : ''}${isSel ? ' selected' : ''}${missing}`;
+
+    return `
+      <div class="${cls}" ${clickable ? `onclick="toggle('${it.id}')"` : ''} data-id="${it.id}">
+        ${leftIcon}
+        <span class="risk-dot ${it.risk}"></span>
+        <div class="item-info">
+          <div class="item-name${isDanger ? ' muted' : ''}">${it.label}</div>
+          <div class="item-desc">${it.description}</div>
+        </div>
+        <div class="item-right">
+          ${badge}
+          <div class="item-size${isBig && !isDanger ? ' big' : ''}">${it.exists ? it.sizeFormatted : '–'}</div>
+        </div>
+      </div>`;
+  }
+
+  function toggle(id) {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    const el = document.querySelector(`[data-id="${id}"]`);
+    const it = items.find(x => x.id === id);
+    if (el && it) {
+      el.outerHTML = renderItem(it);
+      const newEl = document.querySelector(`[data-id="${id}"]`);
+      if (newEl && it.deletable) newEl.addEventListener('click', () => toggle(id));
+    }
+    updateSelInfo();
+  }
+
+  function selectSafe() {
+    for (const it of items) { if (it.risk === 'safe' && it.exists && it.size > 0) selected.add(it.id); }
+    renderItems();
+  }
+
+  function selectAll() {
+    for (const it of items) { if (it.deletable && it.exists && it.size > 0) selected.add(it.id); }
+    renderItems();
+  }
+
+  function clearSel() { selected.clear(); renderItems(); }
+
+  function setControls(on) {
+    ['btnSelectSafe','btnSelectAll','btnClear'].forEach(id => {
+      document.getElementById(id).disabled = !on;
+    });
+    updateSelInfo();
+  }
+
+  function updateSelInfo() {
+    const total = items.filter(i => selected.has(i.id)).reduce((s,i) => s+i.size, 0);
+    document.getElementById('btnClear').disabled  = selected.size === 0;
+    document.getElementById('btnDelete').disabled = selected.size === 0;
+    document.getElementById('selInfo').innerHTML  = selected.size > 0
+      ? `<strong>${selected.size}</strong> SELECTED &mdash; <strong>${fmt(total)}</strong> TO FREE`
+      : '';
+  }
+
+  async function deleteSelected() {
+    if (!selected.size) return;
+    const ids = [...selected];
+    document.getElementById('btnDelete').disabled = true;
+    document.getElementById('status').className = 'status';
+    setControls(false);
+
+    // Show terminal
+    document.getElementById('results').innerHTML = buildTerminal();
+    document.getElementById('termCount').textContent = `0 / ${ids.length}`;
+
+    termAppend(`<span class="term-line term-out">initiating deletion of ${ids.length} target(s)...</span>`);
+    termAppend(`<span class="term-line"> </span>`);
+
+    await new Promise((resolve) => {
+      let failed = [];
+      let done = 0;
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/delete-stream');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      let buf = '';
+      xhr.onprogress = () => {
+        buf += xhr.responseText.slice(buf.length);
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const msg = JSON.parse(line.slice(6));
+
+          if (msg.type === 'cmd') {
+            removeCursor();
+            termAppend(`<span class="term-line term-label">// ${msg.label}</span>`);
+            termAppend(`<span class="term-line term-cmd">${msg.cmd} <span id="termCursor" class="term-cursor"></span></span>`);
+          }
+
+          if (msg.type === 'output') {
+            removeCursor();
+            if (msg.error) {
+              termAppend(`<span class="term-line term-err">${msg.output}</span>`);
+            } else {
+              termAppend(`<span class="term-line term-out">${msg.output}</span>`);
+            }
+            termAppend(`<span class="term-line"> </span>`);
+            done++;
+            document.getElementById('termCount').textContent = `${done} / ${ids.length}`;
+            document.getElementById('termBar').style.width = `${(done/ids.length*100).toFixed(1)}%`;
+          }
+
+          if (msg.type === 'done') {
+            removeCursor();
+            failed = (msg.results || []).filter(r => !r.success);
+            if (!failed.length) {
+              termAppend(`<span class="term-line term-out">operation complete. all targets removed.</span>`);
+            } else {
+              termAppend(`<span class="term-line term-err">completed with ${failed.length} error(s).</span>`);
+            }
+            termAppend(`<span class="term-line term-cmd">exit 0</span>`);
+          }
+        }
+      };
+
+      xhr.onloadend = async () => {
+        selected.clear();
+        await loadDisk();
+        setTimeout(async () => {
+          await runScan();
+          document.getElementById('btnScan').disabled = false;
+          setControls(true);
+          if (!failed.length) {
+            showStatus('success', `> OPERATION COMPLETE. FREED SPACE FROM ${ids.length} TARGET(S).`);
+          } else {
+            showStatus('error', `> ERROR: FAILED ON ${failed.map(f=>f.id).join(', ')}`);
+          }
+          resolve();
+        }, 1000);
+      };
+
+      xhr.send(JSON.stringify({ ids }));
+    });
+  }
+
+  function showStatus(type, msg) {
+    const el = document.getElementById('status');
+    el.className = 'status '+type;
+    el.textContent = msg;
+  }
+
+  let releaseUrl = '';
+
+  async function checkUpdate() {
+    try {
+      const d = await fetch('/api/check-update').then(r => r.json());
+      if (d.hasUpdate) {
+        releaseUrl = d.url;
+        document.getElementById('updateMsg').textContent =
+          `UPDATE AVAILABLE — v${d.latest} (current: v${d.current})`;
+        document.getElementById('updateBanner').classList.add('visible');
+      }
+    } catch {}
+  }
+
+  function openRelease(e) {
+    e.preventDefault();
+    if (releaseUrl) window.open(releaseUrl, '_blank');
+  }
+
+  loadDisk();
+  checkUpdate();
+</script>
+</body>
+</html>

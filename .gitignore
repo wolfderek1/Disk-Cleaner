@@ -1,0 +1,4 @@
+node_modules/
+dist/
+*.icns
+.DS_Store
