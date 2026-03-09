@@ -960,6 +960,7 @@
             renderBreakdown(results);
             document.getElementById('btnBreakdown').disabled = false;
             document.getElementById('btnScan').disabled = false;
+            setControls(true);
             resolve();
           }, 600);
         }
@@ -970,11 +971,6 @@
   }
 
   function renderBreakdown(results) {
-    const totalDisk = items.length > 0
-      ? (document.getElementById('diskTotal') ? parseFmt(document.getElementById('diskTotal').textContent) : 0)
-      : 0;
-
-    // Get total disk size from the disk bar
     const diskTotalEl = document.getElementById('diskTotal');
     const diskTotalBytes = diskTotalEl ? parseSize(diskTotalEl.textContent) : 500 * 1024 * 1024 * 1024;
 

@@ -2,7 +2,12 @@ import Cocoa
 import WebKit
 
 // ── Find node ────────────────────────────────────────────────────────────────
-func findNode() -> String {
+func findNode(appDir: String) -> String {
+    // Bundled node inside the app takes priority — works with no prerequisites
+    let bundled = appDir + "/node"
+    if FileManager.default.fileExists(atPath: bundled) { return bundled }
+
+    // Fall back to system node if bundled binary is missing
     let candidates = [
         "/usr/local/bin/node",
         "/opt/homebrew/bin/node",
@@ -10,7 +15,6 @@ func findNode() -> String {
         (ProcessInfo.processInfo.environment["HOME"] ?? "") + "/.nvm/versions/node/\(nmvCurrent())/bin/node",
     ]
     for p in candidates { if FileManager.default.fileExists(atPath: p) { return p } }
-    // Try `which node`
     let t = Process(); let pipe = Pipe()
     t.executableURL = URL(fileURLWithPath: "/usr/bin/which")
     t.arguments = ["node"]; t.standardOutput = pipe
@@ -31,7 +35,7 @@ var serverProcess: Process?
 var serverPort: Int = 3501
 
 func startServer(appDir: String, completion: @escaping (Int) -> Void) {
-    let node = findNode()
+    let node = findNode(appDir: appDir)
     let serverScript = appDir + "/server.js"
     let port = 3501
 

@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
 
-const CURRENT_VERSION = '2.2.0';
+const CURRENT_VERSION = '2.3.0';
 const RELEASES_API = 'https://api.github.com/repos/wolfderek1/Disk-Cleaner/releases/latest';
 
 const HOME = os.homedir();
