@@ -446,7 +446,7 @@
 <div class="update-banner" id="updateBanner">
   <span>&#9651;</span>
   <span id="updateMsg">UPDATE AVAILABLE</span>
-  <a id="updateLink" href="#" onclick="openRelease(event)">[ DOWNLOAD ]</a>
+  <a id="updateLink" href="#" onclick="startUpdate(event)">[ DOWNLOAD ]</a>
 </div>
 
 <div class="disk-bar-wrap" id="diskWrap" style="display:none">
@@ -779,13 +779,10 @@
     el.textContent = msg;
   }
 
-  let releaseUrl = '';
-
   async function checkUpdate() {
     try {
       const d = await fetch('/api/check-update').then(r => r.json());
       if (d.hasUpdate) {
-        releaseUrl = d.url;
         document.getElementById('updateMsg').textContent =
           `UPDATE AVAILABLE — v${d.latest} (current: v${d.current})`;
         document.getElementById('updateBanner').classList.add('visible');
@@ -793,9 +790,67 @@
     } catch {}
   }
 
-  function openRelease(e) {
+  function buildUpdateTerminal() {
+    return `
+      <div class="terminal" id="updateTerminal">
+        <div class="term-header">
+          <div class="term-dot term-dot-r"></div>
+          <div class="term-dot term-dot-y"></div>
+          <div class="term-dot term-dot-g"></div>
+          <div class="term-title">DISK CLEANER — UPDATE</div>
+        </div>
+        <div id="updateLines"></div>
+        <div class="term-progress">
+          <span id="updateCount">Downloading...</span>
+          <div class="term-progress-bar"><div class="term-progress-fill" id="updateBar" style="width:0%"></div></div>
+        </div>
+      </div>`;
+  }
+
+  function updateLog(msg, cls) {
+    const el = document.getElementById('updateLines');
+    if (!el) return;
+    el.insertAdjacentHTML('beforeend', `<span class="term-line ${cls || 'term-out'}">${msg}</span>`);
+    const term = document.getElementById('updateTerminal');
+    if (term) term.scrollTop = term.scrollHeight;
+  }
+
+  async function startUpdate(e) {
     e.preventDefault();
-    if (releaseUrl) window.open(releaseUrl, '_blank');
+    document.getElementById('updateBanner').classList.remove('visible');
+    document.getElementById('results').innerHTML = buildUpdateTerminal();
+    setControls(false);
+    document.getElementById('btnScan').disabled = true;
+    document.getElementById('btnDelete').disabled = true;
+
+    updateLog('Initiating update sequence...', 'term-out');
+
+    await new Promise((resolve) => {
+      const es = new EventSource('/api/update-stream');
+      es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'log') {
+          updateLog(msg.msg, 'term-out');
+        }
+        if (msg.type === 'progress') {
+          document.getElementById('updateBar').style.width = msg.pct + '%';
+          document.getElementById('updateCount').textContent = `Downloading... ${msg.pct}%`;
+        }
+        if (msg.type === 'done') {
+          document.getElementById('updateCount').textContent = 'Complete';
+          document.getElementById('updateBar').style.width = '100%';
+          updateLog('Relaunching in 2 seconds...', 'term-cmd');
+          es.close();
+          resolve();
+        }
+        if (msg.type === 'error') {
+          updateLog('ERROR: ' + msg.msg, 'term-err');
+          es.close();
+          resolve();
+        }
+      };
+      es.onerror = () => { es.close(); resolve(); };
+    });
   }
 
   loadDisk();

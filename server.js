@@ -3,7 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 
 const CURRENT_VERSION = '2.1.0';
 const RELEASES_API = 'https://api.github.com/repos/wolfderek1/Disk-Cleaner/releases/latest';
@@ -78,6 +78,30 @@ const TARGETS = [
   { id: 'local_share',       label: 'Local App Data',           path: `${HOME}/.local/share`,                                                            category: 'App Data',  risk: 'danger',  description: 'Various application state data.' },
   { id: 'config',            label: 'Config Files',             path: `${HOME}/.config`,                                                                 category: 'App Data',  risk: 'danger',  description: 'Application configuration files.' },
 ];
+
+function downloadFile(url, dest, onProgress) {
+  return new Promise((resolve, reject) => {
+    const doGet = (urlStr) => {
+      const mod = urlStr.startsWith('https') ? https : http;
+      mod.get(urlStr, { headers: { 'User-Agent': 'DiskCleaner/' + CURRENT_VERSION } }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) return doGet(res.headers.location);
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let received = 0;
+        const file = fs.createWriteStream(dest);
+        res.on('data', chunk => {
+          received += chunk.length;
+          if (total && onProgress) onProgress(Math.round(received / total * 100));
+        });
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+        file.on('error', reject);
+        res.on('error', reject);
+      }).on('error', reject);
+    };
+    doGet(url);
+  });
+}
 
 function getDirSize(p) {
   try {
@@ -279,6 +303,71 @@ const server = http.createServer((req, res) => {
     }).on('error', () => {
       json(res, { current: CURRENT_VERSION, latest: CURRENT_VERSION, hasUpdate: false });
     });
+    return;
+  }
+
+  if (req.url === '/api/update-stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const send = (type, data) => res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+
+    (async () => {
+      try {
+        send('log', { msg: 'Fetching release info from GitHub...' });
+
+        const release = await new Promise((resolve, reject) => {
+          https.get({
+            hostname: 'api.github.com',
+            path: '/repos/wolfderek1/Disk-Cleaner/releases/latest',
+            headers: { 'User-Agent': 'DiskCleaner/' + CURRENT_VERSION },
+          }, (r) => {
+            let d = '';
+            r.on('data', c => d += c);
+            r.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { reject(e); } });
+          }).on('error', reject);
+        });
+
+        const asset = (release.assets || []).find(a => a.name.endsWith('.zip'));
+        if (!asset) throw new Error('No zip asset found in release ' + release.tag_name);
+
+        send('log', { msg: `Downloading ${asset.name} (${(asset.size / 1024 / 1024).toFixed(1)} MB)...` });
+
+        const zipPath = path.join(os.tmpdir(), 'disk-cleaner-update.zip');
+        const extractDir = path.join(os.tmpdir(), 'disk-cleaner-update');
+
+        await downloadFile(asset.browser_download_url, zipPath, (pct) => {
+          send('progress', { pct });
+        });
+
+        send('log', { msg: 'Download complete. Extracting...' });
+        execSync(`rm -rf "${extractDir}" && mkdir -p "${extractDir}" && unzip -o "${zipPath}" -d "${extractDir}"`);
+
+        send('log', { msg: 'Installing update into app bundle...' });
+        execSync(`cp -f "${extractDir}/server.js" "${PUBLIC}/../server.js"`);
+        execSync(`cp -rf "${extractDir}/public/" "${PUBLIC}/"`);
+        execSync(`rm -f "${zipPath}" && rm -rf "${extractDir}"`);
+
+        send('log', { msg: 'Update installed successfully.' });
+        send('log', { msg: 'Relaunching Disk Cleaner...' });
+        send('done', {});
+        res.end();
+
+        // Write relaunch script and run detached
+        const script = path.join(os.tmpdir(), 'disk-cleaner-relaunch.sh');
+        fs.writeFileSync(script, `#!/bin/bash\nsleep 2\npkill -x DiskCleaner 2>/dev/null\nsleep 1\nopen "/Applications/Disk Cleaner.app"\n`);
+        execSync(`chmod +x "${script}"`);
+        spawn('bash', [script], { detached: true, stdio: 'ignore' }).unref();
+        setTimeout(() => process.exit(0), 2500);
+
+      } catch (e) {
+        send('error', { msg: e.message });
+        res.end();
+      }
+    })();
     return;
   }
 
