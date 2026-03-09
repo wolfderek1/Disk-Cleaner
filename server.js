@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
 
-const CURRENT_VERSION = '2.1.0';
+const CURRENT_VERSION = '2.2.0';
 const RELEASES_API = 'https://api.github.com/repos/wolfderek1/Disk-Cleaner/releases/latest';
 
 const HOME = os.homedir();
@@ -78,6 +78,82 @@ const TARGETS = [
   { id: 'local_share',       label: 'Local App Data',           path: `${HOME}/.local/share`,                                                            category: 'App Data',  risk: 'danger',  description: 'Various application state data.' },
   { id: 'config',            label: 'Config Files',             path: `${HOME}/.config`,                                                                 category: 'App Data',  risk: 'danger',  description: 'Application configuration files.' },
 ];
+
+const BREAKDOWN_TARGETS = [
+  // System Volumes
+  { id: 'vol_system',      group: 'System Volumes',    label: 'macOS System',             volumeName: 'Macintosh HD', path: null,
+    description: 'The sealed, read-only core OS — kernel, Finder, built-in frameworks, and system apps. Cannot be modified or deleted. Normal size: 10–15 GB.' },
+  { id: 'vol_preboot',     group: 'System Volumes',    label: 'Preboot Volume',            path: '/System/Volumes/Preboot',
+    description: 'Boot files and cryptexes (sealed OS containers) needed to start your Mac. Managed entirely by macOS after every update. Normal size: 5–10 GB.' },
+  { id: 'vol_recovery',    group: 'System Volumes',    label: 'Recovery',                  volumeName: 'Recovery', path: null,
+    description: 'The macOS Recovery partition — used to reinstall macOS, run Disk Utility, or reset your Mac. Always needed, cannot be removed. Normal size: ~1 GB.' },
+  { id: 'vol_vm',          group: 'System Volumes',    label: 'Virtual Memory / Swap',     path: '/private/var/vm',
+    description: 'Swap files (RAM overflow when memory is full) and a sleepimage for hibernation. The sleepimage is the same size as your RAM. Clearing it requires sudo.' },
+
+  // Applications
+  { id: 'applications',    group: 'Applications',      label: 'System Applications',      path: '/Applications',
+    description: 'Apps installed system-wide. To free space, drag unwanted apps to Trash or use an uninstaller for complex apps (e.g. Office, Adobe).' },
+  { id: 'user_apps',       group: 'Applications',      label: 'User Applications',        path: `${HOME}/Applications`,
+    description: 'Apps installed for your user only, including Chrome App shortcuts. Safe to delete individual app folders you no longer need.' },
+  { id: 'homebrew_apps',   group: 'Applications',      label: 'Homebrew',                 path: '/opt/homebrew',
+    description: 'The Homebrew package manager and all CLI tools and apps installed through it (e.g. openvpn, git, node). Run "brew list" to see what\'s installed.' },
+
+  // Your Files
+  { id: 'downloads',       group: 'Your Files',        label: 'Downloads',                path: `${HOME}/Downloads`,
+    description: 'Everything downloaded from the web. Often accumulates large forgotten files — installers (.pkg, .dmg), ZIP archives, and old documents. Review regularly.' },
+  { id: 'documents',       group: 'Your Files',        label: 'Documents',                path: `${HOME}/Documents`,
+    description: 'Your personal document files. Old project folders, PDFs, and spreadsheets tend to pile up here. Review periodically and move to NAS or external storage.' },
+  { id: 'desktop',         group: 'Your Files',        label: 'Desktop',                  path: `${HOME}/Desktop`,
+    description: 'Files sitting on your Desktop. Every item here is rendered by Finder — a cluttered desktop can slow down your Mac. Move files to Documents or trash them.' },
+  { id: 'pictures',        group: 'Your Files',        label: 'Photos & Images',          path: `${HOME}/Pictures`,
+    description: 'Your Photos library and other images. With iCloud "Optimize Mac Storage" enabled, only thumbnails are kept locally — full originals live in iCloud.' },
+  { id: 'movies',          group: 'Your Files',        label: 'Movies & Videos',          path: `${HOME}/Movies`,
+    description: 'Video files, screen recordings, and video projects. These are typically the largest files on any Mac. Move to NAS or external storage when done editing.' },
+  { id: 'music',           group: 'Your Files',        label: 'Music',                    path: `${HOME}/Music`,
+    description: 'Your Music app library. With Apple Music, songs are streamed — only downloaded tracks are stored here. Downloaded podcasts also accumulate here.' },
+
+  // Messages & Mail
+  { id: 'messages',        group: 'Messages & Mail',   label: 'iMessages',                path: `${HOME}/Library/Messages`,
+    description: 'Your full iMessage history, media attachments (photos/videos sent via Messages), and a large cache that can exceed 2 GB on its own. Attachments subfolder is the big one.' },
+  { id: 'mail',            group: 'Messages & Mail',   label: 'Mail',                     path: `${HOME}/Library/Mail`,
+    description: 'Locally downloaded email bodies and attachments. For IMAP accounts (Gmail, iCloud, Outlook) everything also lives on the server — this is just a local copy and is safe to clear.' },
+
+  // App Data & Caches
+  { id: 'app_support',     group: 'App Data & Caches', label: 'Application Support',      path: `${HOME}/Library/Application Support`,
+    description: 'Data stored by every app you\'ve ever installed — databases, settings, saved states, and caches. Orphaned folders from deleted apps accumulate here silently.' },
+  { id: 'lib_caches',      group: 'App Data & Caches', label: 'App Caches',               path: `${HOME}/Library/Caches`,
+    description: 'Temporary files apps create to avoid re-downloading or re-computing data. Always 100% safe to delete — everything rebuilds automatically on next launch.' },
+  { id: 'containers',      group: 'App Data & Caches', label: 'App Sandboxes',            path: `${HOME}/Library/Containers`,
+    description: 'Isolated storage for Mac App Store apps. Each app is confined to its own folder as a security measure — it cannot read other apps\' data.' },
+  { id: 'group_containers',group: 'App Data & Caches', label: 'Shared App Data',          path: `${HOME}/Library/Group Containers`,
+    description: 'Shared storage for families of apps from the same developer — e.g. all Microsoft Office apps or all Apple apps sharing data between each other.' },
+
+  // System Data
+  { id: 'biome',           group: 'System Data',       label: 'Apple Intelligence Data',  path: `${HOME}/Library/Biome`,
+    description: 'Apple\'s on-device behavioral data — which apps you use, when, and how. Powers Siri suggestions and Focus modes. The "streams" subfolder accumulates fast and is always safe to clear.' },
+  { id: 'spotlight',       group: 'System Data',       label: 'Spotlight Search Index',   path: `${HOME}/Library/Metadata/CoreSpotlight`,
+    description: 'Spotlight\'s local search index enabling instant search across your files, apps, and emails. ~1 GB is normal. If deleted, Spotlight silently reindexes over ~1 hour.' },
+  { id: 'sys_logs',        group: 'System Data',       label: 'System Diagnostic Logs',   path: '/private/var/db/diagnostics',
+    description: 'Low-level system logs written by macOS daemons and services. Useful only if diagnosing crashes. Can exceed 1 GB and is always safe to clear (requires sudo).' },
+  { id: 'user_logs',       group: 'System Data',       label: 'User App Logs',            path: `${HOME}/Library/Logs`,
+    description: 'Log files written by your apps. Used by developers to debug crashes. Almost never needed by regular users and safe to clear at any time.' },
+
+  // Developer Tools
+  { id: 'xcode_derived',   group: 'Developer Tools',   label: 'Xcode Build Cache',        path: `${HOME}/Library/Developer/Xcode/DerivedData`,
+    description: 'Intermediate build artifacts Xcode generates when compiling apps — object files, index data, and build products. Can exceed 10 GB. 100% safe to delete; Xcode rebuilds on next compile.' },
+  { id: 'ios_simulators',  group: 'Developer Tools',   label: 'iOS Simulators',           path: `${HOME}/Library/Developer/CoreSimulator/Devices`,
+    description: 'Full iPhone and iPad virtual machine images used to test apps without a real device. Each simulator is 2–5 GB. Delete unused ones via Xcode → Settings → Platforms.' },
+  { id: 'clt',             group: 'Developer Tools',   label: 'Command Line Tools',       path: '/Library/Developer/CommandLineTools',
+    description: 'Apple\'s developer CLI tools: git, python3, make, clang, and more. Required by Homebrew. ~2 GB. Safe to remove if you do no development, but Homebrew will break.' },
+];
+
+function getVolumeConsumed(name) {
+  try {
+    const out = execSync(`diskutil info "${name}" 2>/dev/null`).toString();
+    const m = out.match(/Capacity Consumed:\s+[\d.]+ \S+ \((\d+) Bytes\)/);
+    return m ? parseInt(m[1], 10) : 0;
+  } catch { return 0; }
+}
 
 function downloadFile(url, dest, onProgress) {
   return new Promise((resolve, reject) => {
@@ -368,6 +444,31 @@ const server = http.createServer((req, res) => {
         res.end();
       }
     })();
+    return;
+  }
+
+  if (req.url === '/api/breakdown-stream') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+
+    const send = (type, data) => res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+
+    send('start', { total: BREAKDOWN_TARGETS.length });
+
+    const results = [];
+    for (const t of BREAKDOWN_TARGETS) {
+      const size = t.volumeName && !t.path ? getVolumeConsumed(t.volumeName) : getDirSize(t.path);
+      const sizeFormatted = fmtSize(size);
+      const item = { ...t, size, sizeFormatted, path: t.path || null, volumeName: t.volumeName || null };
+      send('item', item);
+      results.push(item);
+    }
+
+    send('done', { results });
+    res.end();
     return;
   }
 

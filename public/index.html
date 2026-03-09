@@ -430,6 +430,60 @@
       letter-spacing: 0.05em;
     }
 
+    /* ── Breakdown ── */
+    .bd-group { margin-bottom: 18px; }
+    .bd-items { display: flex; flex-direction: column; gap: 4px; }
+
+    .bd-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 10px 12px;
+    }
+
+    .bd-row1 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .bd-label {
+      font-size: 12.5px;
+      color: var(--text);
+      letter-spacing: 0.03em;
+    }
+
+    .bd-size {
+      font-size: 12px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+    .bd-size.big { color: var(--red); text-shadow: 0 0 6px rgba(255,48,48,0.4); }
+
+    .bd-bar-track {
+      height: 3px;
+      background: var(--green-dark);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .bd-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+    .bd-bar-safe    { background: var(--green);  box-shadow: 0 0 4px var(--green); }
+    .bd-bar-caution { background: var(--yellow); box-shadow: 0 0 4px var(--yellow); }
+    .bd-bar-dim     { background: #3a5c3d; }
+
+    .bd-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -463,6 +517,7 @@
   <button class="btn-primary" id="btnScan" onclick="runScan()">[ SCAN ]</button>
   <button class="btn-ghost" id="btnSelectSafe" onclick="selectSafe()" disabled>[ SELECT SAFE ]</button>
   <button class="btn-ghost" id="btnSelectAll" onclick="selectAll()" disabled>[ SELECT ALL ]</button>
+  <button class="btn-ghost" id="btnBreakdown" onclick="runBreakdown()">[ BREAKDOWN ]</button>
   <button class="btn-ghost" id="btnClear" onclick="clearSel()" disabled>[ CLEAR ]</button>
   <span class="sel-info" id="selInfo"></span>
   <button class="btn-danger" id="btnDelete" onclick="deleteSelected()" disabled>[ DELETE ]</button>
@@ -851,6 +906,122 @@
       };
       es.onerror = () => { es.close(); resolve(); };
     });
+  }
+
+  async function runBreakdown() {
+    document.getElementById('btnBreakdown').disabled = true;
+    document.getElementById('btnScan').disabled = true;
+    setControls(false);
+    selected.clear();
+    document.getElementById('status').className = 'status';
+
+    document.getElementById('results').innerHTML = buildTerminal().replace('DISK CLEANER — SCAN', 'DISK CLEANER — BREAKDOWN');
+    document.getElementById('termLines') && (document.getElementById('termLines').innerHTML = '');
+    termAppend(`<span class="term-line term-out">Scanning all storage categories...</span>`);
+    termAppend(`<span class="term-line"> </span>`);
+
+    await new Promise((resolve) => {
+      const es = new EventSource('/api/breakdown-stream');
+      let total = 0, done = 0;
+      const results = [];
+
+      es.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+
+        if (msg.type === 'start') {
+          total = msg.total;
+          termAppend(`<span class="term-line term-out">found ${total} categories — analysing...</span>`);
+          termAppend(`<span class="term-line"> </span>`);
+        }
+
+        if (msg.type === 'item') {
+          removeCursor();
+          termAppend(`<span class="term-line term-label">// ${msg.label}</span>`);
+          termAppend(`<span class="term-line term-cmd">du -sk "${msg.path || msg.volumeName}" <span id="termCursor" class="term-cursor"></span></span>`);
+          removeCursor();
+          if (msg.size > 0) {
+            termAppend(`<span class="term-line term-out">${msg.sizeFormatted}</span>`);
+          } else {
+            termAppend(`<span class="term-line term-miss">not found — skipped</span>`);
+          }
+          termAppend(`<span class="term-line"> </span>`);
+          done++;
+          document.getElementById('termCount').textContent = `${done} / ${total}`;
+          document.getElementById('termBar').style.width = `${(done/total*100).toFixed(1)}%`;
+          results.push(msg);
+        }
+
+        if (msg.type === 'done') {
+          removeCursor();
+          termAppend(`<span class="term-line term-out">breakdown complete.</span>`);
+          termAppend(`<span class="term-line term-cmd">exit 0</span>`);
+          es.close();
+          setTimeout(() => {
+            renderBreakdown(results);
+            document.getElementById('btnBreakdown').disabled = false;
+            document.getElementById('btnScan').disabled = false;
+            resolve();
+          }, 600);
+        }
+      };
+
+      es.onerror = () => { es.close(); resolve(); };
+    });
+  }
+
+  function renderBreakdown(results) {
+    const totalDisk = items.length > 0
+      ? (document.getElementById('diskTotal') ? parseFmt(document.getElementById('diskTotal').textContent) : 0)
+      : 0;
+
+    // Get total disk size from the disk bar
+    const diskTotalEl = document.getElementById('diskTotal');
+    const diskTotalBytes = diskTotalEl ? parseSize(diskTotalEl.textContent) : 500 * 1024 * 1024 * 1024;
+
+    const groups = {};
+    for (const r of results) {
+      if (!r.size) continue;
+      if (!groups[r.group]) groups[r.group] = [];
+      groups[r.group].push(r);
+    }
+
+    const groupOrder = ['System Volumes','Applications','Your Files','Messages & Mail','App Data & Caches','System Data','Developer Tools'];
+    const sorted = [...new Set([...groupOrder, ...Object.keys(groups)])].filter(g => groups[g]);
+
+    let html = '<div class="categories">';
+    for (const g of sorted) {
+      if (!groups[g]) continue;
+      const gitems = [...groups[g]].sort((a,b) => b.size - a.size);
+      html += `<div class="bd-group"><div class="cat-label">// ${g}</div><div class="bd-items">`;
+      for (const it of gitems) {
+        const pct = Math.min((it.size / diskTotalBytes * 100), 100).toFixed(2);
+        const isSystem = g === 'System Volumes';
+        const isBig = it.size > 1 * 1024 * 1024 * 1024;
+        const barClass = isSystem ? 'bd-bar-dim' : isBig ? 'bd-bar-caution' : 'bd-bar-safe';
+        html += `
+          <div class="bd-item">
+            <div class="bd-row1">
+              <span class="bd-label">${it.label}</span>
+              <span class="bd-size${isBig && !isSystem ? ' big' : ''}">${it.sizeFormatted}</span>
+            </div>
+            <div class="bd-bar-track"><div class="bd-bar-fill ${barClass}" style="width:${pct}%"></div></div>
+            <div class="bd-desc">${it.description}</div>
+          </div>`;
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+  }
+
+  function parseSize(str) {
+    if (!str || str === '–') return 0;
+    const m = str.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i);
+    if (!m) return 0;
+    const n = parseFloat(m[1]);
+    const u = m[2].toUpperCase();
+    const mult = { B:1, KB:1024, MB:1024**2, GB:1024**3, TB:1024**4 };
+    return n * (mult[u] || 1);
   }
 
   loadDisk();
