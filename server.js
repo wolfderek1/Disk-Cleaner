@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const CURRENT_VERSION = '2.0.0';
+const CURRENT_VERSION = '2.1.0';
 const RELEASES_API = 'https://api.github.com/repos/wolfderek1/Disk-Cleaner/releases/latest';
 
 const HOME = os.homedir();
@@ -39,17 +39,29 @@ const TARGETS = [
   { id: 'ios_simulators',    label: 'iOS Simulators',           path: `${HOME}/Library/Developer/CoreSimulator/Devices`,                                 category: 'Developer', risk: 'caution', description: 'Simulator images. Re-downloadable via Xcode.' },
   { id: 'arduino_packages',  label: 'Arduino Board Packages',   path: `${HOME}/Library/Arduino15/packages`,                                              category: 'Developer', risk: 'caution', description: 'Board toolchains. Re-installable via Arduino IDE.' },
   { id: 'vscode_extensions', label: 'VSCode Extensions',        path: `${HOME}/.vscode/extensions`,                                                      category: 'Developer', risk: 'caution', description: 'Installed VSCode extensions. Re-installable.' },
+  { id: 'vscode_vsix',       label: 'VSCode Extension Packages', path: `${HOME}/Library/Application Support/Code/CachedExtensionVSIXs`,                  category: 'Developer', risk: 'safe',    description: 'Cached VSCode extension installer files. Re-downloaded on update.' },
   { id: 'docker_data',       label: 'Docker Data',              path: `${HOME}/Library/Containers/com.docker.docker/Data`,                               category: 'Developer', risk: 'caution', description: 'Docker images/containers. Remove via Docker Desktop.' },
   // App caches — safe
   { id: 'app_caches',        label: 'App Caches',               path: `${HOME}/Library/Caches`,                                                          category: 'App Caches', risk: 'safe',   description: 'General application caches.' },
   { id: 'notif_cache',       label: 'Notification Attachments', path: `${HOME}/Library/Group Containers/group.com.apple.UserNotifications/Library/UserNotifications/Remote`, category: 'App Caches', risk: 'safe', description: 'Cached images/videos from push notifications.' },
-  { id: 'claude_cache',      label: 'Claude App Cache',         path: `${HOME}/Library/Application Support/Claude/Cache`,                                category: 'App Caches', risk: 'safe',   description: 'Claude desktop app web cache.' },
+  { id: 'claude_cache',      label: 'Claude App Cache',         path: `${HOME}/Library/Application Support/Claude/Code Cache`,                           category: 'App Caches', risk: 'safe',   description: 'Claude desktop app web cache.' },
   { id: 'brave_cache',       label: 'Brave Cache',              path: `${HOME}/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cache`,   category: 'App Caches', risk: 'safe',   description: 'Brave browser cache.' },
   { id: 'chrome_cache',      label: 'Chrome Cache',             path: `${HOME}/Library/Application Support/Google/Chrome/Default/Cache`,                 category: 'App Caches', risk: 'safe',   description: 'Chrome browser cache.' },
+  { id: 'chrome_code_cache', label: 'Chrome Code Cache',        path: `${HOME}/Library/Application Support/Google/Chrome/Default/Code Cache`,            category: 'App Caches', risk: 'safe',   description: 'Chrome JavaScript code cache.' },
+  { id: 'chrome_gpu_cache',  label: 'Chrome GPU Cache',         path: `${HOME}/Library/Application Support/Google/Chrome/Default/GPUCache`,              category: 'App Caches', risk: 'safe',   description: 'Chrome GPU shader cache.' },
+  { id: 'google_updater',    label: 'Google Updater Cache',     path: `${HOME}/Library/Application Support/Google/GoogleUpdater`,                        category: 'App Caches', risk: 'safe',   description: 'Google app updater cache. Re-downloads on next update check.' },
   { id: 'safari_cache',      label: 'Safari Cache',             path: `${HOME}/Library/Caches/com.apple.Safari`,                                         category: 'App Caches', risk: 'safe',   description: 'Safari browser cache.' },
+  { id: 'messages_cache',    label: 'Messages Cache',           path: `${HOME}/Library/Messages/Caches`,                                                  category: 'App Caches', risk: 'safe',   description: 'iMessage app cache. Can exceed 2GB. Rebuilds automatically.' },
+  { id: 'messages_nick',     label: 'Messages NickName Cache',  path: `${HOME}/Library/Messages/NickNameCache`,                                           category: 'App Caches', risk: 'safe',   description: 'Cached contact display names for Messages.' },
+  { id: 'wallpaper_cache',   label: 'Wallpaper Cache',          path: `${HOME}/Library/Application Support/com.apple.wallpaper`,                         category: 'App Caches', risk: 'safe',   description: 'macOS wallpaper data cache. Regenerated automatically.' },
+  { id: 'maps_cache',        label: 'Maps & Location Cache',    path: `${HOME}/Library/Containers/com.apple.geod/Data/Library/Caches`,                   category: 'App Caches', risk: 'safe',   description: 'Cached map tiles and location data. Re-downloads on use.' },
+  { id: 'media_analysis',    label: 'Photo Media Analysis Cache', path: `${HOME}/Library/Containers/com.apple.mediaanalysisd/Data/Library/Caches`,       category: 'App Caches', risk: 'safe',   description: 'AI photo analysis cache. Rebuilds in background.' },
   // System — safe
   { id: 'user_logs',         label: 'User Logs',                path: `${HOME}/Library/Logs`,                                                            category: 'System',    risk: 'safe',    description: 'Application log files.' },
   { id: 'trash',             label: 'Trash',                    path: `${HOME}/.Trash`,                                                                  category: 'System',    risk: 'safe',    description: 'Files in Trash.' },
+  { id: 'biome_streams',     label: 'Apple Biome Streams',      path: `${HOME}/Library/Biome/streams`,                                                   category: 'System',    risk: 'safe',    description: 'Apple on-device behavioral tracking data. Safe to clear, rebuilds automatically.' },
+  // System — caution
+  { id: 'spotlight_index',   label: 'Spotlight Search Index',   path: `${HOME}/Library/Metadata/CoreSpotlight`,                                          category: 'System',    risk: 'caution', description: 'Spotlight search index. Deleting forces a full reindex — search will be slow for ~1 hour.' },
   // User Data — danger
   { id: 'downloads',         label: 'Downloads',                path: `${HOME}/Downloads`,                                                               category: 'User Data', risk: 'danger',  description: 'Your Downloads folder. Review manually.' },
   { id: 'documents',         label: 'Documents',                path: `${HOME}/Documents`,                                                               category: 'User Data', risk: 'danger',  description: 'Personal documents.' },
