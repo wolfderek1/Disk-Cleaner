@@ -1,6 +1,6 @@
 # Disk Cleaner
 
-A lightweight macOS disk space manager with a hacker-themed UI.
+A lightweight macOS disk space manager.
 
 ## Features
 
